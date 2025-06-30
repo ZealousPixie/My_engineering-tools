@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Integrated Engineering Database</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        /* Custom scrollbar for better aesthetics */
+        textarea::-webkit-scrollbar, .results-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track, .results-container::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb, .results-container::-webkit-scrollbar-thumb {
+            background: #a0a0a0;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover, .results-container::-webkit-scrollbar-thumb:hover {
+            background: #808080;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6; /* Blue */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl border border-gray-200">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">AI Engineering Database</h1>
+        <p class="text-center text-gray-600 mb-8">Store engineering codes and standards, then query them using natural language.</p>
+
+        <!-- User ID Display -->
+        <div class="mb-6 bg-blue-50 p-4 rounded-lg flex items-center justify-between shadow-sm">
+            <span class="font-medium text-blue-800">Your User ID:</span>
+            <span id="userIdDisplay" class="text-blue-600 text-sm font-mono truncate">Loading...</span>
+        </div>
+
+        <!-- Add Data Section -->
+        <div class="mb-8 p-6 bg-gray-50 rounded-lg border border-gray-100">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Add New Document</h2>
+            <input type="text" id="docTitle" placeholder="Document Title (e.g., ASME B31.3 Piping Code)"
+                   class="w-full p-3 mb-4 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 shadow-sm">
+
+            <div class="flex items-center space-x-4 mb-4">
+                <label for="pdfUpload" class="cursor-pointer bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 shadow-md">
+                    Upload PDF
+                </label>
+                <input type="file" id="pdfUpload" accept=".pdf" class="hidden">
+                <span id="pdfFileName" class="text-gray-600 italic">No PDF chosen</span>
+                <div id="pdfLoadingSpinner" class="spinner hidden"></div>
+            </div>
+
+            <textarea id="docContent" placeholder="Paste the engineering code or design standard content here, or upload a PDF to extract text..."
+                      rows="8" class="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 shadow-sm resize-y"></textarea>
+            <button id="saveDocBtn"
+                    class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-md">
+                Save Document
+            </button>
+            <p id="saveStatus" class="text-sm mt-2 text-center"></p>
+        </div>
+
+        <!-- Query Data Section -->
+        <div class="p-6 bg-gray-50 rounded-lg border border-gray-100">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Query Database with AI</h2>
+            <textarea id="queryInput" placeholder="Ask a question in natural language (e.g., What are the requirements for pipe wall thickness calculation in ASME B31.3?)"
+                      rows="4" class="w-full p-3 mb-4 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 shadow-sm resize-y"></textarea>
+            <button id="queryBtn"
+                    class="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-md">
+                Query AI
+            </button>
+            <p id="queryStatus" class="text-sm mt-2 text-center"></p>
+
+            <!-- Results Display -->
+            <div id="results" class="mt-6 p-4 bg-white border border-gray-200 rounded-md shadow-inner results-container max-h-96 overflow-y-auto">
+                <h3 class="text-lg font-medium text-gray-800 mb-2">AI Response:</h3>
+                <p id="aiResponse" class="text-gray-700 whitespace-pre-wrap">Your AI-generated answer will appear here.</p>
+                <h3 class="text-lg font-medium text-gray-800 mt-4 mb-2">Relevant Documents:</h3>
+                <ul id="documentList" class="list-disc pl-5 text-gray-700">
+                    <!-- Documents will be loaded here -->
+                    <li class="text-gray-500 italic">No documents found yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // PDF.js CDN
+        // Make sure to load the worker script from the same origin or a CORS-enabled server
+        // This setup uses the official CDN which should work.
+        const PDF_JS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        const PDF_JS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+        // Load PDF.js script dynamically
+        const pdfScript = document.createElement('script');
+        pdfScript.src = PDF_JS_URL;
+        pdfScript.onload = () => {
+            // Set the workerSrc for pdf.js
+            if (window.pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_JS_WORKER_URL;
+                console.log("PDF.js loaded and worker set.");
+            } else {
+                console.error("pdfjsLib is not defined after loading PDF.js script.");
+            }
+        };
+        pdfScript.onerror = () => console.error("Error loading PDF.js script.");
+        document.head.appendChild(pdfScript);
+
+
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+
+        /**
+         * Initializes Firebase and sets up authentication.
+         * Ensures Firebase is ready before database operations.
+         */
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length > 0) {
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    // Set up auth state listener
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            document.getElementById('userIdDisplay').textContent = userId;
+                            console.log("Firebase Auth State Changed: User is signed in with UID:", userId);
+                            // Now that we have a user ID, we can load documents
+                            loadDocuments();
+                        } else {
+                            console.log("Firebase Auth State Changed: No user is signed in.");
+                            // If no user, try to sign in (anonymously or with custom token)
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                    console.log("Signed in with custom token.");
+                                } else {
+                                    await signInAnonymously(auth);
+                                    console.log("Signed in anonymously.");
+                                }
+                            } catch (authError) {
+                                console.error("Error during initial authentication:", authError);
+                                document.getElementById('userIdDisplay').textContent = 'Authentication failed.';
+                            }
+                        }
+                    });
+
+                    // Initial attempt to sign in if listener hasn't fired yet or to ensure token is used
+                    if (auth.currentUser === null) {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                } else {
+                    console.error("Firebase config is missing or empty. Cannot initialize Firebase.");
+                    document.getElementById('userIdDisplay').textContent = 'Firebase config error.';
+                }
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                document.getElementById('userIdDisplay').textContent = 'Firebase init error.';
+            }
+        }
+
+        /**
+         * Handles PDF file upload and extracts text content.
+         */
+        document.getElementById('pdfUpload').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            const pdfFileNameSpan = document.getElementById('pdfFileName');
+            const docContentTextarea = document.getElementById('docContent');
+            const pdfLoadingSpinner = document.getElementById('pdfLoadingSpinner');
+            const docTitleInput = document.getElementById('docTitle');
+
+            if (!file) {
+                pdfFileNameSpan.textContent = 'No PDF chosen';
+                docContentTextarea.value = '';
+                return;
+            }
+
+            if (!window.pdfjsLib) {
+                pdfFileNameSpan.textContent = 'PDF.js library not loaded. Please try again.';
+                console.error("PDF.js library is not available.");
+                return;
+            }
+
+            pdfFileNameSpan.textContent = `Processing: ${file.name}...`;
+            pdfLoadingSpinner.classList.remove('hidden');
+            docContentTextarea.value = 'Extracting text from PDF, please wait...';
+            docTitleInput.value = file.name.replace(/\.pdf$/i, '').replace(/_/g, ' '); // Suggest title from filename
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const arrayBuffer = e.target.result;
+                try {
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        // Join text items, add a space to avoid words concatenating across items
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n\n'; // Add double newline between pages
+                    }
+                    docContentTextarea.value = fullText.trim();
+                    pdfFileNameSpan.textContent = `Loaded: ${file.name}`;
+                    pdfLoadingSpinner.classList.add('hidden');
+                } catch (error) {
+                    console.error("Error processing PDF:", error);
+                    docContentTextarea.value = 'Failed to extract text from PDF. Please ensure it\'s a valid, readable PDF.';
+                    pdfFileNameSpan.textContent = `Error with: ${file.name}`;
+                    pdfLoadingSpinner.classList.add('hidden');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        /**
+         * Saves a new engineering document to Firestore.
+         */
+        document.getElementById('saveDocBtn').addEventListener('click', async () => {
+            const title = document.getElementById('docTitle').value.trim();
+            const content = document.getElementById('docContent').value.trim();
+            const saveStatus = document.getElementById('saveStatus');
+
+            if (!title || !content) {
+                saveStatus.textContent = 'Please enter both title and content.';
+                saveStatus.className = 'text-sm mt-2 text-center text-red-600';
+                return;
+            }
+
+            if (!db || !userId) {
+                saveStatus.textContent = 'Database not ready. Please wait for initialization.';
+                saveStatus.className = 'text-sm mt-2 text-center text-red-600';
+                console.error("Firestore instance or user ID is not available.");
+                return;
+            }
+
+            saveStatus.textContent = 'Saving document...';
+            saveStatus.className = 'text-sm mt-2 text-center text-gray-500';
+
+            try {
+                // Documents are stored privately per user
+                const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/engineering_data`), {
+                    title: title,
+                    content: content,
+                    timestamp: new Date()
+                });
+                console.log("Document written with ID: ", docRef.id);
+                saveStatus.textContent = 'Document saved successfully!';
+                saveStatus.className = 'text-sm mt-2 text-center text-green-600';
+                document.getElementById('docTitle').value = '';
+                document.getElementById('docContent').value = '';
+                document.getElementById('pdfFileName').textContent = 'No PDF chosen'; // Reset PDF file name
+                document.getElementById('pdfUpload').value = ''; // Clear file input
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                saveStatus.textContent = 'Error saving document. Check console for details.';
+                saveStatus.className = 'text-sm mt-2 text-center text-red-600';
+            }
+        });
+
+        let allDocuments = []; // Stores all documents for AI processing
+
+        /**
+         * Loads all engineering documents from Firestore and sets up a real-time listener.
+         */
+        function loadDocuments() {
+            if (!db || !userId) {
+                console.warn("Cannot load documents: Firestore or user ID not available.");
+                return;
+            }
+
+            const documentsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/engineering_data`);
+            const q = query(documentsCollectionRef);
+
+            // Set up real-time listener
+            onSnapshot(q, (snapshot) => {
+                const docList = document.getElementById('documentList');
+                docList.innerHTML = ''; // Clear existing list
+                allDocuments = []; // Clear and repopulate allDocuments
+                if (snapshot.empty) {
+                    docList.innerHTML = '<li class="text-gray-500 italic">No documents found. Add some above!</li>';
+                } else {
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        allDocuments.push(data); // Add to the array for AI processing
+
+                        const li = document.createElement('li');
+                        li.className = 'mb-1 text-blue-700 hover:text-blue-800 transition-colors cursor-pointer';
+                        li.textContent = data.title;
+                        li.onclick = () => {
+                            // Optional: Display full content of clicked document
+                            document.getElementById('aiResponse').textContent = `Title: ${data.title}\n\nContent:\n${data.content}`;
+                            document.getElementById('aiResponse').className = 'text-gray-700 whitespace-pre-wrap border border-gray-300 p-3 rounded-md bg-gray-50';
+                        };
+                        docList.appendChild(li);
+                    });
+                    console.log(`Loaded ${allDocuments.length} documents.`);
+                }
+            }, (error) => {
+                console.error("Error fetching real-time documents: ", error);
+                document.getElementById('documentList').innerHTML = '<li class="text-red-500">Error loading documents.</li>';
+            });
+        }
+
+
+        /**
+         * Queries the AI (Gemini API) with the user's question and all stored documents as context.
+         */
+        document.getElementById('queryBtn').addEventListener('click', async () => {
+            const queryInput = document.getElementById('queryInput').value.trim();
+            const queryStatus = document.getElementById('queryStatus');
+            const aiResponse = document.getElementById('aiResponse');
+
+            if (!queryInput) {
+                queryStatus.textContent = 'Please enter a question to query the AI.';
+                queryStatus.className = 'text-sm mt-2 text-center text-red-600';
+                return;
+            }
+
+            if (allDocuments.length === 0) {
+                queryStatus.textContent = 'No documents found in your database. Please add some first.';
+                queryStatus.className = 'text-sm mt-2 text-center text-red-600';
+                return;
+            }
+
+            queryStatus.textContent = 'Querying AI... This may take a moment.';
+            queryStatus.className = 'text-sm mt-2 text-center text-gray-500';
+            aiResponse.textContent = 'Generating response...';
+            aiResponse.className = 'text-gray-700 whitespace-pre-wrap text-gray-500 italic';
+
+
+            try {
+                // Construct the prompt for the AI
+                let prompt = `You are an AI assistant specialized in engineering codes and design standards.
+                I will provide you with a list of engineering documents.
+                Your task is to answer my question ONLY based on the provided documents.
+                If the answer is not present in the documents, state that you cannot find the answer in the provided context.
+                Be concise and directly answer the question.
+
+                My Question: "${queryInput}"
+
+                ---
+                Provided Engineering Documents:
+                `;
+
+                // Add all document content to the prompt
+                allDocuments.forEach((doc, index) => {
+                    prompt += `\n\nDocument ${index + 1} - Title: ${doc.title}\nContent:\n${doc.content}\n---`;
+                });
+
+                // Call Gemini API
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // Canvas will provide this at runtime if empty
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    aiResponse.textContent = text;
+                    aiResponse.className = 'text-gray-700 whitespace-pre-wrap border border-gray-300 p-3 rounded-md bg-green-50';
+                    queryStatus.textContent = 'Query complete.';
+                    queryStatus.className = 'text-sm mt-2 text-center text-green-600';
+                } else {
+                    console.error("Unexpected API response structure:", result);
+                    aiResponse.textContent = 'AI could not generate a response. Please try again or rephrase your question.';
+                    aiResponse.className = 'text-gray-700 whitespace-pre-wrap border border-gray-300 p-3 rounded-md bg-red-50';
+                    queryStatus.textContent = 'Error: No AI response.';
+                    queryStatus.className = 'text-sm mt-2 text-center text-red-600';
+                }
+            } catch (error) {
+                console.error("Error querying AI:", error);
+                aiResponse.textContent = 'Error connecting to AI. Please check your network and try again.';
+                aiResponse.className = 'text-gray-700 whitespace-pre-wrap border border-gray-300 p-3 rounded-md bg-red-50';
+                queryStatus.textContent = 'Error querying AI.';
+                queryStatus.className = 'text-sm mt-2 text-center text-red-600';
+            }
+        });
+
+        // Initialize Firebase on window load
+        window.onload = initializeFirebase;
+
+    </script>
+</body>
+</html>
