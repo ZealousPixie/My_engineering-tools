@@ -107,7 +107,6 @@
 
         // PDF.js CDN
         // Make sure to load the worker script from the same origin or a CORS-enabled server
-        // This setup uses the official CDN which should work.
         const PDF_JS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
         const PDF_JS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
@@ -115,7 +114,6 @@
         const pdfScript = document.createElement('script');
         pdfScript.src = PDF_JS_URL;
         pdfScript.onload = () => {
-            // Set the workerSrc for pdf.js
             if (window.pdfjsLib) {
                 pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_JS_WORKER_URL;
                 console.log("PDF.js loaded and worker set.");
@@ -127,10 +125,30 @@
         document.head.appendChild(pdfScript);
 
 
-        // Global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // !!! YOUR ACTUAL FIREBASE PROJECT CONFIGURATION IS INJECTED BELOW.         !!!
+        // !!! DO NOT EDIT THIS SECTION MANUALLY UNLESS YOU ARE UPDATING YOUR        !!!
+        // !!! FIREBASE PROJECT SETTINGS.                                            !!!
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        const firebaseConfig = {
+            apiKey: "AIzaSyBu0UY9VYgTGt_6VWomohVV4gTETfoKf-I",
+            authDomain: "my-engineering-tools.firebaseapp.com",
+            projectId: "my-engineering-tools",
+            storageBucket: "my-engineering-tools.firebasestorage.app",
+            messagingSenderId: "920105502459",
+            appId: "1:920105502459:web:2db1289f3f21fc344f125e",
+            measurementId: "G-PLMTJ6YKV0" // This measurementId is for Analytics, not directly used by Auth/Firestore.
+        };
+        // Using projectId as appId for the database path for consistency.
+        const appId = firebaseConfig.projectId;
+        const initialAuthToken = null; // This token is only provided by the Canvas environment.
+
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // !!! ALSO, ENSURE ANONYMOUS AUTHENTICATION IS ENABLED IN YOUR FIREBASE PROJECT:!!!
+        // !!! 1. In Firebase Console, go to "Authentication" -> "Sign-in method"    !!!
+        // !!! 2. Enable the "Anonymous" provider.                                   !!!
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 
         // Initialize Firebase
         let app;
@@ -144,7 +162,8 @@
          */
         async function initializeFirebase() {
             try {
-                if (Object.keys(firebaseConfig).length > 0) {
+                // Firebase config check (simplified as it's now pre-filled)
+                if (firebaseConfig.apiKey && firebaseConfig.projectId) { // Basic check for essential config
                     app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
                     auth = getAuth(app);
@@ -159,33 +178,34 @@
                             loadDocuments();
                         } else {
                             console.log("Firebase Auth State Changed: No user is signed in.");
-                            // If no user, try to sign in (anonymously or with custom token)
+                            // If no user, try to sign in anonymously
                             try {
-                                if (initialAuthToken) {
-                                    await signInWithCustomToken(auth, initialAuthToken);
-                                    console.log("Signed in with custom token.");
-                                } else {
-                                    await signInAnonymously(auth);
-                                    console.log("Signed in anonymously.");
-                                }
+                                await signInAnonymously(auth); // Use anonymous sign-in for external hosting
+                                console.log("Signed in anonymously.");
                             } catch (authError) {
-                                console.error("Error during initial authentication:", authError);
+                                console.error("Error during initial anonymous authentication:", authError);
                                 document.getElementById('userIdDisplay').textContent = 'Authentication failed.';
                             }
                         }
                     });
 
                     // Initial attempt to sign in if listener hasn't fired yet or to ensure token is used
+                    // This is especially important for the first load to ensure a user is authenticated
                     if (auth.currentUser === null) {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
+                        try {
                             await signInAnonymously(auth);
+                        } catch (e) {
+                             console.error("Attempt to sign in anonymously on load failed:", e);
                         }
                     }
                 } else {
-                    console.error("Firebase config is missing or empty. Cannot initialize Firebase.");
-                    document.getElementById('userIdDisplay').textContent = 'Firebase config error.';
+                    console.error("Firebase config is incomplete. Please ensure all essential values are present.");
+                    document.getElementById('userIdDisplay').textContent = 'Firebase config error: Incomplete keys!';
+                    // Display a user-friendly message on the page if config is not updated
+                    document.getElementById('saveStatus').textContent = 'Error: Firebase not configured. Update firebaseConfig in code.';
+                    document.getElementById('saveStatus').className = 'text-sm mt-2 text-center text-red-600 font-bold';
+                    document.getElementById('queryStatus').textContent = 'Error: Firebase not configured. Cannot query AI.';
+                    document.getElementById('queryStatus').className = 'text-sm mt-2 text-center text-red-600 font-bold';
                 }
             } catch (error) {
                 console.error("Error initializing Firebase:", error);
@@ -385,7 +405,19 @@
                 let chatHistory = [];
                 chatHistory.push({ role: "user", parts: [{ text: prompt }] });
                 const payload = { contents: chatHistory };
-                const apiKey = ""; // Canvas will provide this at runtime if empty
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                // !!! IMPORTANT: If you are hosting this externally and are getting 403 errors !!!
+                // !!! on API calls, you MUST provide your actual Gemini API key here.         !!!
+                // !!!                                                                         !!!
+                // !!! How to get your Gemini API key:                                         !!!
+                // !!! 1. Go to Google AI Studio: https://makersuite.google.com/               !!!
+                // !!! 2. Log in and go to "Get API key" or "API key" section.                 !!!
+                // !!! 3. Create a new API key if you don't have one.                          !!!
+                // !!!                                                                         !!!
+                // !!! For production applications, consider securing this key using           !!!
+                // !!! environment variables or a backend proxy, not hardcoding it directly.   !!!
+                // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                const apiKey = ""; // <--- !!! REPLACE WITH YOUR ACTUAL GEMINI API KEY IF NEEDED !!!
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
